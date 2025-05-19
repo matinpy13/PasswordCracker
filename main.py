@@ -18,14 +18,26 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-CONFIG_FILE = resource_path("config.json")
-
-if hasattr(sys, '_MEIPASS'):
-    unrar_exe_path_in_bundle = resource_path("UnRAR.exe")
-    if os.path.exists(unrar_exe_path_in_bundle):
-        rarfile.UNRAR_TOOL = unrar_exe_path_in_bundle
+def get_application_path():
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(sys.executable)
     else:
-        print("FATAL: UnRAR.exe not found in bundle!")
+        application_path = os.path.dirname(os.path.abspath(__file__))
+    return application_path
+
+CONFIG_FILE = os.path.join(get_application_path(), "config.json")
+print(f"INFO: Configuration file expected at: {CONFIG_FILE}")
+
+_unrar_exe_candidate_path = resource_path("UnRAR.exe")
+_unrar_tool_configured_successfully = False
+
+if os.path.exists(_unrar_exe_candidate_path):
+    rarfile.UNRAR_TOOL = _unrar_exe_candidate_path
+    _unrar_tool_configured_successfully = True
+    print(f"INFO: rarfile.UNRAR_TOOL set to specific UnRAR.exe: {rarfile.UNRAR_TOOL}")
+else:
+    print(f"WARNING: Specific UnRAR.exe not found at '{_unrar_exe_candidate_path}'. Falling back to system 'unrar'.")
+    rarfile.UNRAR_TOOL = "unrar"
 
 
 LANGUAGES = {
@@ -65,8 +77,8 @@ LANGUAGES = {
         "log_file_error_halting": "File error with {filepath}. Halting for this file.",
         "log_success_password_is": "\nSUCCESS! Password is: {password}",
         "log_password_not_found_constraints": "\nPassword not found within the given constraints.",
-        "log_unrar_not_found": "Error: 'unrar' tool not found. Please install it and ensure it's in your PATH, or set rarfile.UNRAR_TOOL.",
-        "log_rar_cracking_disabled": "RAR cracking disabled for this session.",
+        "log_unrar_tool_missing_or_invalid": "Error: Specific UnRAR tool is missing or invalid.",
+        "log_rar_cracking_disabled": "RAR cracking may be impaired or rely on system PATH.",
         "log_rar_no_password_needed": "Info: '{filename}' does not seem to be password protected by RAR.",
         "log_multivolume_rar_unsupported": "Error: Multi-volume RAR archives are not supported for cracking.",
         "log_pdf_not_encrypted": "Info: '{filename}' is not encrypted.",
@@ -91,7 +103,7 @@ LANGUAGES = {
         "ok_button": "OK",
         "about_window_title": "About Program",
         "about_app_name_label": "Password Cracker",
-        "about_info_text": "Developed by: MatinPy13\n\nTelegram: @MatinPy13\n\nVersion: 1.0.0\n© 2025",
+        "about_info_text": "Developed by: MatinPy13\n\nTelegram: @MatinPy13\n\nVersion: 1.0.1\n© 2025",
         "back_button_text": "Back",
         "loading_info_text": "This program was developed by MatinPy13.",
         "loading_warning_text": "The user is responsible for any misuse of this tool.\nPlease use this program in compliance with laws and ethics.",
@@ -136,8 +148,8 @@ LANGUAGES = {
         "log_file_error_halting": "خطا در فایل {filepath}. عملیات برای این فایل متوقف می‌شود.",
         "log_success_password_is": "\nموفقیت! رمز عبور: {password}",
         "log_password_not_found_constraints": "\nرمز عبور با محدودیت‌های داده شده پیدا نشد.",
-        "log_unrar_not_found": "خطا: ابزار 'unrar' یافت نشد. لطفاً آن را نصب کرده و از وجود آن در PATH سیستم اطمینان حاصل کنید، یا rarfile.UNRAR_TOOL را تنظیم کنید.",
-        "log_rar_cracking_disabled": "شکستن رمز RAR برای این جلسه غیرفعال شد.",
+        "log_unrar_tool_missing_or_invalid": "خطا: ابزار UnRAR مشخص شده موجود نیست یا نامعتبر است.",
+        "log_rar_cracking_disabled": "شکستن رمز RAR ممکن است مختل شود یا به PATH سیستم متکی باشد.",
         "log_rar_no_password_needed": "اطلاعات: به نظر می‌رسد فایل '{filename}' با RAR رمزگذاری نشده است.",
         "log_multivolume_rar_unsupported": "خطا: آرشیوهای RAR چند قسمتی برای شکستن رمز پشتیبانی نمی‌شوند.",
         "log_pdf_not_encrypted": "اطلاعات: فایل '{filename}' رمزگذاری نشده است.",
@@ -162,7 +174,7 @@ LANGUAGES = {
         "ok_button": "باشه",
         "about_window_title": "درباره برنامه",
         "about_app_name_label": "Password Cracker",
-        "about_info_text": "توسعه یافته توسط: MatinPy13\n\nتلگرام: @MatinPy13\n\nنسخه: 1.0.0\n© 2025",
+        "about_info_text": "توسعه یافته توسط: MatinPy13\n\nتلگرام: @MatinPy13\n\nنسخه: 1.0.1\n© 2025",
         "back_button_text": "بازگشت",
         "loading_info_text": "این برنامه توسط MatinPy13 توسعه یافته است.",
         "loading_warning_text": "مسئولیت هرگونه استفاده نادرست از این ابزار بر عهده کاربر می‌باشد.\nلطفاً با رعایت قوانین و اخلاق از این برنامه استفاده کنید.",
@@ -178,7 +190,11 @@ def load_language_setting():
         with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
             config = json.load(f)
             return config.get("language", "en")
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        print(f"Warning: Config file '{CONFIG_FILE}' not found. Using default language 'en'.")
+        return "en"
+    except json.JSONDecodeError:
+        print(f"Warning: Config file '{CONFIG_FILE}' is invalid or empty. Using default language 'en'.")
         return "en"
 
 def save_language_setting(lang_code):
@@ -318,6 +334,9 @@ class SimpleCrackerApp(ctk.CTk):
         self.crack_thread = None
         self.attempt_count = 0
         self.start_time_crack = None
+        
+        self.unrar_tool_explicitly_available = _unrar_tool_configured_successfully
+
         main_frame = ctk.CTkFrame(self)
         main_frame.pack(pady=10, padx=20, fill="both", expand=True)
         title_bar_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -391,6 +410,15 @@ class SimpleCrackerApp(ctk.CTk):
         self.attempts_label_widget.pack(pady=5, anchor="w")
         self.log_textbox = ctk.CTkTextbox(status_frame, height=180, state="disabled", font=("Consolas", 11))
         self.log_textbox.pack(pady=5, fill="both", expand=True)
+        
+        self._check_unrar_tool_initial_status()
+
+
+    def _check_unrar_tool_initial_status(self):
+        if not self.unrar_tool_explicitly_available:
+            self.after(100, lambda: self.log_message(self.strings["log_unrar_tool_missing_or_invalid"] + f" (Expected: {_unrar_exe_candidate_path})"))
+            self.after(150, lambda: self.log_message(self.strings["log_rar_cracking_disabled"] + " Will attempt to use system 'unrar' if available."))
+
 
     def show_generic_error_message(self, specific_error_details=None):
         if specific_error_details:
@@ -473,6 +501,18 @@ class SimpleCrackerApp(ctk.CTk):
         if file_extension not in [".zip", ".rar", ".pdf"]:
             messagebox.showerror(self.strings["error_title"], self.strings["error_unsupported_file_type_msg"].format(file_extension=file_extension))
             return
+        
+        if file_extension == ".rar" and not self.unrar_tool_explicitly_available:
+            response = messagebox.askyesno(
+                self.strings["warning_title"],
+                self.strings["log_unrar_tool_missing_or_invalid"] + 
+                f" (Expected: {_unrar_exe_candidate_path}).\n" +
+                "Attempt to use 'unrar' from system PATH? This might not work or be slow.",
+                icon=messagebox.WARNING
+            )
+            if not response:
+                return
+
         if len(charset) > 70 and max_len > 4 or len(charset) > 50 and max_len > 5 :
             warn_msg = self.strings["warning_long_op_msg"].format(charset_key=selected_charset_display_name, max_len=max_len)
             if not messagebox.askyesno(self.strings["warning_long_op_title"], warn_msg):
@@ -491,6 +531,7 @@ class SimpleCrackerApp(ctk.CTk):
         self.start_time_crack = time.time()
         self.update_status_bar(0, 0)
         self.stop_event.clear()
+        self.critical_error_flag_for_session = False 
         self.crack_thread = threading.Thread(
             target=self.run_crack_logic_dispatcher,
             args=(target_filepath, file_extension, charset, min_len, max_len),
@@ -512,38 +553,41 @@ class SimpleCrackerApp(ctk.CTk):
         self.max_len_entry.configure(state="normal")
         self.stop_button.configure(state="disabled")
         file_type_display = file_type_ext.replace(".","").upper() if file_type_ext else "File"
-        if self.stop_event.is_set() and not password_found:
+        
+        elapsed_time = time.time() - self.start_time_crack if self.start_time_crack else 0
+        self.update_status_bar(self.attempt_count, elapsed_time)
+
+        if hasattr(self, 'critical_error_flag_for_session') and self.critical_error_flag_for_session:
+            pass 
+        elif self.stop_event.is_set() and not password_found:
              self.status_label_var.set(self.strings["status_stopped_user"].format(file_type=file_type_display))
-             if not hasattr(self, 'critical_error_flag_for_session') or not self.critical_error_flag_for_session:
-                self.log_message(self.strings["status_stopped_user"].format(file_type=file_type_display).replace(f"Status ({file_type_display}): ", ""))
+             self.log_message(self.strings["status_stopped_user"].format(file_type=file_type_display).replace(f"Status ({file_type_display}): ", ""))
         elif password_found:
             self.status_label_var.set(self.strings["status_password_found"].format(file_type=file_type_display))
             self.log_message(self.strings["log_success_password_is"].format(password=found_password_value))
             messagebox.showinfo(self.strings["success_title"], self.strings["success_password_found_msg"].format(password=found_password_value))
-        else:
-            if not (hasattr(self, 'critical_error_flag_for_session') and self.critical_error_flag_for_session):
-                self.status_label_var.set(self.strings["status_password_not_found"].format(file_type=file_type_display))
-                self.log_message(self.strings["log_password_not_found_constraints"])
-                messagebox.showinfo(self.strings["result_title"], self.strings["result_password_not_found_msg"])
-        elapsed_time = time.time() - self.start_time_crack if self.start_time_crack else 0
-        self.update_status_bar(self.attempt_count, elapsed_time)
+        else: 
+            self.status_label_var.set(self.strings["status_password_not_found"].format(file_type=file_type_display))
+            self.log_message(self.strings["log_password_not_found_constraints"])
+            messagebox.showinfo(self.strings["result_title"], self.strings["result_password_not_found_msg"])
+        
         self.crack_thread = None
-        if hasattr(self, 'critical_error_flag_for_session'):
-            del self.critical_error_flag_for_session
+
 
     def run_crack_logic_dispatcher(self, filepath, file_extension, charset, min_length, max_length):
         password_found_flag = False
         identified_password = None
-        self.critical_error_flag_for_session = False
+
         cracker_function = None
         if file_extension == ".zip": cracker_function = self._crack_zip
         elif file_extension == ".rar": cracker_function = self._crack_rar
         elif file_extension == ".pdf": cracker_function = self._crack_pdf
-        if not cracker_function:
+        
+        if not cracker_function: 
             self.after(0, self.log_message, self.strings["error_no_cracker_for_file"].format(file_extension=file_extension))
             self.critical_error_flag_for_session = True
-            self.after(0, self._on_crack_complete, False, None, file_extension)
             return
+            
         try:
             file_type_display = file_extension.replace(".","").upper()
             for length in range(min_length, max_length + 1):
@@ -553,32 +597,64 @@ class SimpleCrackerApp(ctk.CTk):
                     if self.stop_event.is_set(): break
                     password_str = "".join(password_tuple)
                     self.attempt_count += 1
-                    if self.attempt_count % 2000 == 0:
+                    if self.attempt_count % 500 == 0 or self.attempt_count == 1 : 
                         elapsed = time.time() - self.start_time_crack
                         self.after(0, self.update_status_bar, self.attempt_count, elapsed)
+                    
                     result = cracker_function(filepath, password_str)
+                    
                     if result == "found":
                         identified_password = password_str
                         password_found_flag = True; break
                     elif result == "wrong_password": continue
-                    elif result == "file_error":
-                        self.after(0, self.log_message, self.strings["log_file_error_halting"].format(filepath=os.path.basename(filepath)))
-                        self.stop_event.set()
-                        break
+                    elif result == "file_error": 
+                        self.stop_event.set(); break 
                 if password_found_flag or self.stop_event.is_set(): break
-        except rarfile.NoCrackerToolError:
-            self.after(0, self.log_message, self.strings["log_unrar_not_found"])
-            self.after(0, self.log_message, self.strings["log_rar_cracking_disabled"])
-            self.critical_error_flag_for_session = True
+
+        except RuntimeError as e_runtime: 
+            if file_extension == ".rar":
+                err_str = str(e_runtime).lower()
+                current_unrar_tool = rarfile.UNRAR_TOOL if rarfile.UNRAR_TOOL else "unknown"
+                if "unrar" in err_str or "not found" in err_str or "cannot exec" in err_str or "tool" in err_str or "no such file" in err_str:
+                    detailed_error_msg = f"RuntimeError with UnRAR tool ('{current_unrar_tool}'): {e_runtime}"
+                    self.after(0, self.status_label_var.set, self.strings["log_unrar_tool_missing_or_invalid"])
+                    self.after(0, self.log_message, detailed_error_msg)
+                    self.after(0, self.log_message, self.strings["log_rar_cracking_disabled"].replace("may be impaired or rely on system PATH.", "failed."))
+                    self.critical_error_flag_for_session = True
+                else: 
+                    self.after(0, self.status_label_var.set, self.strings["error_critical_dispatcher"].format(error=e_runtime))
+                    self.after(0, self.log_message, self.strings["error_critical_dispatcher"].format(error=e_runtime))
+                    self.critical_error_flag_for_session = True
+            else: 
+                self.after(0, self.status_label_var.set, self.strings["error_critical_dispatcher"].format(error=e_runtime))
+                self.after(0, self.log_message, self.strings["error_critical_dispatcher"].format(error=e_runtime))
+                self.critical_error_flag_for_session = True
             self.stop_event.set()
+
+        except FileNotFoundError as e_fnf: 
+            current_unrar_tool_fnf = rarfile.UNRAR_TOOL if rarfile.UNRAR_TOOL else "unknown"
+            if file_extension == ".rar" and current_unrar_tool_fnf and current_unrar_tool_fnf in str(e_fnf):
+                detailed_error_msg_fnf = f"FileNotFoundError for UnRAR tool ('{current_unrar_tool_fnf}'): {e_fnf}"
+                self.after(0, self.status_label_var.set, self.strings["log_unrar_tool_missing_or_invalid"])
+                self.after(0, self.log_message, detailed_error_msg_fnf)
+                self.after(0, self.log_message, self.strings["log_rar_cracking_disabled"].replace("may be impaired or rely on system PATH.", "failed."))
+                self.critical_error_flag_for_session = True
+            else:
+                self.after(0, self.status_label_var.set, self.strings["error_critical_dispatcher"].format(error=e_fnf))
+                self.after(0, self.log_message, self.strings["error_critical_dispatcher"].format(error=e_fnf))
+                self.critical_error_flag_for_session = True
+            self.stop_event.set()
+
         except (pyzipper.zipfile.BadZipFile, rarfile.BadRarFile, pikepdf.PdfError) as e_file_corruption:
-            self.after(0, self.log_message, f"Error: File appears to be corrupted or is not a valid {file_extension.upper()} file: {os.path.basename(filepath)}. Details: {e_file_corruption}")
+            msg = f"Error: File appears to be corrupted or is not a valid {file_extension.upper()} file: {os.path.basename(filepath)}. Details: {e_file_corruption}"
+            self.after(0, self.status_label_var.set, msg.split('.')[0])
+            self.after(0, self.log_message, msg)
             self.critical_error_flag_for_session = True
             self.stop_event.set()
         except Exception as e_general_dispatcher:
-            self.after(0, self.log_message, self.strings["error_critical_dispatcher"].format(error=e_general_dispatcher))
-            self.show_generic_error_message(specific_error_details=f"Dispatcher: {e_general_dispatcher}")
-            password_found_flag = False
+            msg = self.strings["error_critical_dispatcher"].format(error=f"{type(e_general_dispatcher).__name__}: {e_general_dispatcher}")
+            self.after(0, self.status_label_var.set, msg)
+            self.after(0, self.log_message, msg)
             self.critical_error_flag_for_session = True
             self.stop_event.set()
         finally:
@@ -588,54 +664,111 @@ class SimpleCrackerApp(ctk.CTk):
         try:
             with pyzipper.AESZipFile(filepath, 'r') as zf:
                 zf.setpassword(password_str.encode('utf-8'))
-                if zf.testzip() is None: return "found"
-                else: return "wrong_password"
-        except RuntimeError as e:
+                if zf.testzip() is None: 
+                    return "found"
+                else: 
+                    return "wrong_password" 
+        except RuntimeError as e: 
             if 'Bad password' in str(e) or 'password incorrect' in str(e) or 'CRC error' in str(e):
                 return "wrong_password"
-            raise
-        except pyzipper.zipfile.BadZipFile as e:
-            raise
-        except Exception: return "wrong_password"
+            raise 
+        except pyzipper.zipfile.BadZipFile: 
+            raise 
+        except Exception: 
+            return "wrong_password" 
 
     def _crack_rar(self, filepath, password_str):
+        rf = None
+        _PasswordIncorrect = getattr(rarfile, 'PasswordIncorrect', None)
+        _NoPassword = getattr(rarfile, 'NoPassword', None)
+        _BadRarFile = rarfile.BadRarFile
+
         try:
             rf = rarfile.RarFile(filepath)
-            rf.setpassword(password_str)
-            if rf.needs_password():
-                _ = rf.infolist()
+
+            if not rf.needs_password():
+                try:
+                    _ = rf.infolist() 
+                    self.after(0, self.log_message, self.strings["log_rar_no_password_needed"].format(filename=os.path.basename(filepath)))
+                    if rf: rf.close()
+                    return "file_error"
+                except Exception:
+                    pass 
+
+            rf.setpassword(password_str) 
+            test_result = rf.testrar() 
+            
+            if test_result is None: 
+                if rf: rf.close()
                 return "found"
-            else:
-                self.after(0, self.log_message, self.strings["log_rar_no_password_needed"].format(filename=os.path.basename(filepath)))
-                self.stop_event.set()
-                return "file_error"
-        except rarfile.NoCrackerToolError:
-            raise
-        except (rarfile.BadRarFile, rarfile.NeedFirstVolume) as e_rar_specific :
-            if isinstance(e_rar_specific, rarfile.NeedFirstVolume):
-                 self.after(0, self.log_message, self.strings["log_multivolume_rar_unsupported"])
-                 self.stop_event.set()
-                 return "file_error"
-            raise
-        except (rarfile.PasswortIncorrect, rarfile.NoPassword):
-            return "wrong_password"
-        except RuntimeError as e:
-            if "bad password" in str(e).lower() or "wrong password" in str(e).lower() or "crc check failed" in str(e).lower():
+            else: 
+                if rf: rf.close()
+                return "wrong_password"
+
+        except RuntimeError as e: 
+            if rf: rf.close()
+            err_str = str(e).lower()
+            if "bad password" in err_str or "wrong password" in err_str or \
+               "crc check failed" in err_str or "checksum error" in err_str:
                 return "wrong_password"
             raise
-        except Exception: return "wrong_password"
+
+        except rarfile.NeedFirstVolume: 
+            if rf: rf.close()
+            self.after(0, self.log_message, self.strings["log_multivolume_rar_unsupported"])
+            return "file_error"
+            
+        except (_BadRarFile, Exception) as e:
+            if rf: rf.close()
+            
+            if _PasswordIncorrect and isinstance(e, _PasswordIncorrect):
+                return "wrong_password"
+            if _NoPassword and isinstance(e, _NoPassword):
+                return "wrong_password"
+
+            if isinstance(e, _BadRarFile):
+                err_str = str(e).lower()
+                if "password" in err_str or "crc" in err_str or "checksum" in err_str or \
+                   "failed the read enough data" in err_str:
+                    return "wrong_password"
+            
+            raise e
+
+        finally:
+            if rf:
+                try:
+                    rf.close()
+                except:
+                    pass
 
     def _crack_pdf(self, filepath, password_str):
+        pdf = None
         try:
             pdf = pikepdf.Pdf.open(filepath, password=password_str)
             if not pdf.is_encrypted:
                 self.after(0, self.log_message, self.strings["log_pdf_not_encrypted"].format(filename=os.path.basename(filepath)))
-                self.stop_event.set(); pdf.close(); return "file_error"
-            _ = len(pdf.pages); pdf.close(); return "found"
-        except pikepdf.PasswordError: return "wrong_password"
-        except (pikepdf.PdfError, IOError, ValueError, TypeError, AttributeError) as e:
-            raise
-        except Exception: return "wrong_password"
+                if pdf: pdf.close()
+                return "file_error" 
+            
+            _ = len(pdf.pages) 
+            if pdf: pdf.close()
+            return "found"
+        except pikepdf.PasswordError: 
+            if pdf: pdf.close() 
+            return "wrong_password"
+        except (pikepdf.PdfError, IOError, ValueError, TypeError, AttributeError) as e: 
+            if pdf: pdf.close()
+            raise e 
+        except Exception: 
+            if pdf: pdf.close()
+            return "wrong_password" 
+        finally:
+            if pdf:
+                try:
+                    pdf.close()
+                except:
+                    pass
+
 
 if __name__ == "__main__":
     ctk.set_appearance_mode("System")
